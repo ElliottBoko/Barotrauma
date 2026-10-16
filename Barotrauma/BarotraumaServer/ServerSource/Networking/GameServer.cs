@@ -15,7 +15,7 @@ using Barotrauma.PerkBehaviors;
 
 namespace Barotrauma.Networking
 {
-    sealed class GameServer : NetworkMember
+    sealed partial class GameServer : NetworkMember
     {
         public override bool IsServer => true;
         public override bool IsClient => false;
@@ -260,6 +260,9 @@ namespace Barotrauma.Networking
             started = true;
 
             GameAnalyticsManager.AddDesignEvent("GameServer:Start");
+
+            // MMO mod: become a world zone if MMO_* environment variables are set (no-op otherwise).
+            Mmo.MmoZone.TryStart(this);
         }
 
 
@@ -378,6 +381,9 @@ namespace Barotrauma.Networking
                 if (otherClient == newClient) { continue; }
                 CoroutineManager.StartCoroutine(SendClientPermissionsAfterClientListSynced(newClient, otherClient));
             }
+
+            // MMO mod: ask the orchestrator where this player's character is.
+            Mmo.MmoZone.Instance?.OnClientJoined(newClient);
         }
 
         private void OnClientDisconnect(NetworkConnection connection, PeerDisconnectPacket peerDisconnectPacket)
@@ -392,6 +398,9 @@ namespace Barotrauma.Networking
             dosProtection.Update(deltaTime);
 
             if (!started) { return; }
+
+            // MMO mod: heartbeats, periodic saves, redirect timeouts.
+            Mmo.MmoZone.Instance?.Update(deltaTime);
 
             if (ChildServerRelay.HasShutDown)
             {
@@ -3694,6 +3703,9 @@ namespace Barotrauma.Networking
         public void DisconnectClient(Client client, PeerDisconnectPacket peerDisconnectPacket)
         {
             if (client == null) return;
+
+            // MMO mod: save and release the character while it still exists.
+            Mmo.MmoZone.Instance?.OnClientDisconnecting(client);
 
             if (client.Character != null)
             {

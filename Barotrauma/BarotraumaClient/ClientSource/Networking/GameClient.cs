@@ -14,7 +14,7 @@ using System.Xml.Linq;
 
 namespace Barotrauma.Networking
 {
-    sealed class GameClient : NetworkMember
+    sealed partial class GameClient : NetworkMember
     {
         public static readonly TimeSpan CampaignSaveTransferTimeOut = new TimeSpan(0, 0, seconds: 100);
         //this should be longer than CampaignSaveTransferTimeOut - we shouldn't give up starting the round if we're still waiting for the save file
@@ -602,6 +602,13 @@ namespace Barotrauma.Networking
         private void ReadDataMessage(IReadMessage inc)
         {
             ServerPacketHeader header = (ServerPacketHeader)inc.ReadByte();
+
+            // MMO mod: handled before any state gating so a redirect is never queued or dropped.
+            if (header == ServerPacketHeader.ZONE_REDIRECT)
+            {
+                ReadZoneRedirect(inc);
+                return;
+            }
 
             if (roundInitStatus == RoundInitStatus.WaitingForStartGameFinalize
                 && header is not (

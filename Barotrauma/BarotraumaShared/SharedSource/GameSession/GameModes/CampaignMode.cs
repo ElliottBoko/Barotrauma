@@ -660,6 +660,14 @@ namespace Barotrauma
                     Environment.StackTrace.CleanupStackTrace());
                 return;
             }
+#if SERVER
+            // MMO mod: in zone mode the level never changes; the leaving crew moves to the next zone.
+            if (Networking.Mmo.MmoZone.Instance is { } mmoZone)
+            {
+                mmoZone.OnLevelExit(availableTransition, leavingSub);
+                return;
+            }
+#endif
             if (nextLevel == null)
             {
                 DebugConsole.ThrowErrorLocalized("Failed to load a new campaign level. No available level transitions " +

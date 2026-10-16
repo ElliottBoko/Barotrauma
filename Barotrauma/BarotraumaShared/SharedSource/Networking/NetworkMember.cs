@@ -103,7 +103,9 @@ namespace Barotrauma.Networking
         READY_CHECK,        //start, end and update a ready check
         UNLOCKRECIPE,       //unlocking a fabrication recipe
 
-        SEND_BACKUP_INDICES // the server sends a list of available backups for a save file
+        SEND_BACKUP_INDICES, // the server sends a list of available backups for a save file
+
+        ZONE_REDIRECT        // MMO mod: leave and connect to another zone server (server name, endpoint)
     }
     enum ServerNetSegment
     {

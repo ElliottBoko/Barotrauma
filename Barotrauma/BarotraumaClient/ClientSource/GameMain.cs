@@ -234,7 +234,8 @@ namespace Barotrauma
             };
             GraphicsDeviceManager.ApplyChanges();
 
-            Window.Title = "Barotrauma";
+            // MMO mod: the EULA requires modified builds to be plainly marked as modified.
+            Window.Title = "Barotrauma (modified: MMO mod - not an official build)";
 
             Instance = this;
 
