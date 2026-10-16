@@ -227,7 +227,7 @@ namespace Barotrauma.Networking.Mmo
             foreach (string acc in redirected.Keys.ToList())
             {
                 float left = redirected[acc] - deltaTime;
-                Client? c = server.ConnectedClients.FirstOrDefault(c => AccountKey(c) == acc);
+                Client? c = server.ConnectedClients.FirstOrDefault(other => AccountKey(other) == acc);
                 if (c == null)
                 {
                     // They left on their own, which is what we wanted. Keep the entry a little
