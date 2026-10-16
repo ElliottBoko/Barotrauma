@@ -20,7 +20,8 @@ namespace Barotrauma.Networking.Mmo
         string ZoneKey,
         string PublicAddress,
         string? ExitEndZone,
-        string? ExitStartZone)
+        string? ExitStartZone,
+        bool AllowUnauthenticated)
     {
         public static MmoZoneConfig? FromEnvironment()
         {
@@ -42,7 +43,10 @@ namespace Barotrauma.Networking.Mmo
                 PublicAddress: Required("MMO_PUBLIC_ADDRESS"),
                 // Zone keys reached by leaving through the end / start of this zone's level.
                 ExitEndZone: Optional("MMO_EXIT_END"),
-                ExitStartZone: Optional("MMO_EXIT_START"));
+                ExitStartZone: Optional("MMO_EXIT_START"),
+                // LOAD TESTING ONLY. Unauthenticated IDs are just "UNAUTHENTICATED_" + the player's
+                // chosen name, so anyone could take over anyone's character by picking their name.
+                AllowUnauthenticated: Optional("MMO_ALLOW_UNAUTHENTICATED") == "I_UNDERSTAND_THIS_IS_INSECURE");
         }
     }
 
@@ -93,14 +97,26 @@ namespace Barotrauma.Networking.Mmo
             if (config == null) { return; }
             Instance = new MmoZone(server, config);
             Log($"Zone mode on. Zone \"{config.ZoneKey}\", orchestrator {config.OrchestratorUrl}.");
+            if (config.AllowUnauthenticated)
+            {
+                LogError("MMO_ALLOW_UNAUTHENTICATED is on: players can impersonate each other. Never use this on a public server.");
+            }
             Instance.Register();
         }
 
         private static void Log(string msg) => DebugConsole.NewMessage("[MMO] " + msg, Microsoft.Xna.Framework.Color.Cyan);
         private static void LogError(string msg) => DebugConsole.ThrowError("[MMO] " + msg);
 
-        private static string? AccountKey(Client c) =>
-            c.AccountId.TryUnwrap(out AccountId? id) ? id.StringRepresentation : null;
+        /// <summary>
+        /// The key a character is stored under, or null if this client may not have one. Only
+        /// verified accounts (Steam/Epic) qualify, unless load-testing mode is explicitly enabled.
+        /// </summary>
+        private string? AccountKey(Client c)
+        {
+            if (!c.AccountId.TryUnwrap(out AccountId? id)) { return null; }
+            if (id is UnauthenticatedAccountId && !config.AllowUnauthenticated) { return null; }
+            return id.StringRepresentation;
+        }
 
         private static MultiPlayerCampaign? Campaign => GameMain.GameSession?.GameMode as MultiPlayerCampaign;
 
@@ -235,7 +251,7 @@ namespace Barotrauma.Networking.Mmo
         {
             if (AccountKey(client) is not string acc)
             {
-                server.DisconnectClient(client, PeerDisconnectPacket.Custom("This MMO server requires a Steam account."));
+                server.DisconnectClient(client, PeerDisconnectPacket.Custom("This MMO server requires a verified Steam or Epic account."));
                 return;
             }
             // A new connection from someone we recently sent away (e.g. they travelled back).
