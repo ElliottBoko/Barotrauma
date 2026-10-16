@@ -39,6 +39,7 @@ impl Harness {
             store: Store::new(pool.clone(), Timing { dead_after_secs: 30.0, transfer_ttl_secs: 300.0 }),
             zone_secret: SECRET.into(),
             heartbeat_interval_secs: 10,
+            allow_unauthenticated: false,
         });
         Harness { app: router(state), pool }
     }
@@ -410,4 +411,12 @@ async fn percent_encoded_account_ids_work(pool: PgPool) {
     assert_eq!((s, v["status"].as_str()), (StatusCode::OK, Some("new")));
     let (_, v) = h.claim("STEAM_1:1:42", &a).await;
     assert_eq!(v["status"], "new", "escaped and unescaped forms must be the same player");
+}
+
+#[sqlx::test(migrator = "baro_orchestrator::MIGRATOR")]
+async fn unauthenticated_accounts_are_refused_by_default(pool: PgPool) {
+    let h = Harness::new(pool).await;
+    let a = h.register("loc-1", 32).await;
+    let (s, v) = h.claim("UNAUTHENTICATED_Ada", &a).await;
+    assert_eq!((s, v["error"].as_str()), (StatusCode::BAD_REQUEST, Some("bad_request")));
 }

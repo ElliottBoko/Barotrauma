@@ -30,6 +30,7 @@ Migrations run automatically on start-up, and the world file is synced into the 
 | `HEARTBEAT_INTERVAL_SECS` | `10` | Zones heartbeat this often; 3 missed = dead |
 | `TRANSFER_TTL_SECS` | `300` | How long seats are held for a crew in transit |
 | `RUST_LOG` | `info` | Log filter |
+| `ALLOW_UNAUTHENTICATED` | off | Set to `I_UNDERSTAND_THIS_IS_INSECURE` to accept non-Steam test accounts. **Load testing only**: those IDs are just the player's chosen name, so anyone could take over anyone's character. |
 
 ## Test it
 
