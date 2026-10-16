@@ -20,6 +20,8 @@ pub struct AppState {
     pub store: Store,
     pub zone_secret: String,
     pub heartbeat_interval_secs: u64,
+    /// Load testing only: accept "UNAUTHENTICATED_<name>" account IDs, which anyone can spoof.
+    pub allow_unauthenticated: bool,
 }
 
 pub type Shared = Arc<AppState>;
@@ -62,9 +64,14 @@ async fn require_zone_secret(State(state): State<Shared>, req: Request, next: Ne
     Ok(next.run(req).await)
 }
 
-fn check_account_id(id: &str) -> ApiResult<()> {
+fn check_account_id(state: &AppState, id: &str) -> ApiResult<()> {
     if id.is_empty() || id.len() > 128 || id.chars().any(char::is_control) {
         return Err(ApiError::BadRequest("invalid account_id".into()));
+    }
+    if id.starts_with("UNAUTHENTICATED_") && !state.allow_unauthenticated {
+        return Err(ApiError::BadRequest(
+            "unauthenticated accounts are not allowed (set ALLOW_UNAUTHENTICATED only for load tests)".into(),
+        ));
     }
     Ok(())
 }
@@ -123,7 +130,7 @@ async fn claim(
     Path(account_id): Path<String>,
     Json(b): Json<InstanceBody>,
 ) -> ApiResult<Json<ClaimOutcome>> {
-    check_account_id(&account_id)?;
+    check_account_id(&s, &account_id)?;
     let outcome = s.store.claim(&account_id, b.instance_id).await?;
     let status = match &outcome {
         ClaimOutcome::Arrive { .. } => "arrive",
@@ -146,7 +153,7 @@ async fn save_character(
     Path(account_id): Path<String>,
     Json(b): Json<SaveBody>,
 ) -> ApiResult<StatusCode> {
-    check_account_id(&account_id)?;
+    check_account_id(&s, &account_id)?;
     check_xml(&b.character_xml)?;
     s.store.save(&account_id, b.instance_id, Some(&b.character_xml), false).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -165,7 +172,7 @@ async fn release(
     Path(account_id): Path<String>,
     Json(b): Json<ReleaseBody>,
 ) -> ApiResult<StatusCode> {
-    check_account_id(&account_id)?;
+    check_account_id(&s, &account_id)?;
     if let Some(xml) = &b.character_xml {
         check_xml(xml)?;
     }
@@ -192,7 +199,7 @@ async fn transfer(State(s): State<Shared>, Json(b): Json<TransferBody>) -> ApiRe
     }
     let mut seen = HashSet::new();
     for p in &b.players {
-        check_account_id(&p.account_id)?;
+        check_account_id(&s, &p.account_id)?;
         check_xml(&p.character_xml)?;
         if !seen.insert(p.account_id.as_str()) {
             return Err(ApiError::BadRequest(format!("duplicate account_id {}", p.account_id)));

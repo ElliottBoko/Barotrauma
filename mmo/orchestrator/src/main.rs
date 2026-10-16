@@ -32,6 +32,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bind = env_or("BIND_ADDR", "0.0.0.0:8080".to_string())?;
     let heartbeat_interval_secs: u64 = env_or("HEARTBEAT_INTERVAL_SECS", 10)?;
     let transfer_ttl_secs: f64 = env_or("TRANSFER_TTL_SECS", 300.0)?;
+    let allow_unauthenticated = env_or("ALLOW_UNAUTHENTICATED", String::new())? == "I_UNDERSTAND_THIS_IS_INSECURE";
+    if allow_unauthenticated {
+        tracing::warn!("ALLOW_UNAUTHENTICATED is on: players can impersonate each other. Load testing only.");
+    }
 
     let world = WorldFile::parse(&std::fs::read_to_string(&world_path)?)
         .map_err(|e| format!("{world_path}: {e}"))?;
@@ -50,6 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         store: Store::new(pool, timing),
         zone_secret,
         heartbeat_interval_secs,
+        allow_unauthenticated,
     });
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
