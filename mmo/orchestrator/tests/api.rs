@@ -386,3 +386,28 @@ async fn simultaneous_first_joins_create_one_character(pool: PgPool) {
         assert_eq!(sorted, ["new", "redirect"], "{statuses:?}");
     }
 }
+
+#[sqlx::test(migrator = "baro_orchestrator::MIGRATOR")]
+async fn release_without_xml_keeps_last_save(pool: PgPool) {
+    let h = Harness::new(pool).await;
+    let a = h.register("loc-1", 32).await;
+    h.new_player(P1, &a, XML1).await;
+    let (s, _) = h
+        .call("POST", &format!("/v1/players/{P1}/release"), Some(json!({ "instance_id": a })))
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (_, v) = h.claim(P1, &a).await;
+    assert_eq!(v["status"], "resume");
+    assert_eq!(v["character_xml"], XML1);
+}
+
+#[sqlx::test(migrator = "baro_orchestrator::MIGRATOR")]
+async fn percent_encoded_account_ids_work(pool: PgPool) {
+    // The game client escapes ':' in Steam IDs (STEAM_1:1:42 -> STEAM_1%3A1%3A42).
+    let h = Harness::new(pool).await;
+    let a = h.register("loc-1", 32).await;
+    let (s, v) = h.claim("STEAM_1%3A1%3A42", &a).await;
+    assert_eq!((s, v["status"].as_str()), (StatusCode::OK, Some("new")));
+    let (_, v) = h.claim("STEAM_1:1:42", &a).await;
+    assert_eq!(v["status"], "new", "escaped and unescaped forms must be the same player");
+}

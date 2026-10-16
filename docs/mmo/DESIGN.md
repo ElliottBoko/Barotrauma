@@ -3,7 +3,15 @@
 > **This is a modified version of Barotrauma.** It is not the original software and is not
 > made or endorsed by Undertow Games / FakeFish. All rights to Barotrauma belong to Undertow Games.
 
-Status: draft · Owner: Elliott (ElliottBoko) · Branch base: `mmo/phase0-32-players`
+Status: draft · Owner: Elliott (ElliottBoko)
+
+Related: `PROTOCOL.md` (zone ⇄ orchestrator API), `ZONE_SETUP.md` (running zones), `LOADTEST.md` (fake players).
+
+| Branch | Contents | Built? |
+|---|---|---|
+| `mmo/phase0-32-players` | Player cap 32 | Not yet (needs laptop) |
+| `mmo/main` | Docs + Rust orchestrator | Yes: 20 tests pass |
+| `mmo/zone-hooks` | `mmo/main` + C# game hooks + contract test | Orchestrator client yes; game hooks not yet |
 
 ## 1. Goal
 
@@ -72,9 +80,9 @@ From reading the source at upstream commit `e6e95da` (2 Sep 2026).
 ```
 
 **Zone server (the fork).** A normal Barotrauma dedicated server with small hooks:
-on player leave → write their `CharacterCampaignData` to the database;
-on player join with a valid transfer token → load it;
-at a level exit → ask the orchestrator where to send the player and tell the client.
+on player join → ask the orchestrator (by Steam AccountId) whether to load a character, start
+fresh, or redirect; on player leave → save and release; at a level exit → transfer the crew and
+redirect them. No tokens pass through the client: Steam auth already proves who the player is.
 
 **Orchestrator (new service).** Owns the world map, knows which zone instances are running,
 issues short-lived transfer tokens, starts and stops zone servers, and overflows busy zones
@@ -89,12 +97,14 @@ modification notice. Players must run this build.
 ### Zone transfer flow
 
 1. Sub reaches a level exit in zone A.
-2. Zone A saves each crew member's `CharacterCampaignData` (and the sub) to Postgres.
-3. Zone A asks the orchestrator for the destination; orchestrator picks or starts zone B and
-   returns its address plus a one-time token per player.
-4. Zone A sends each client "reconnect to B with token"; clients disconnect.
-5. Clients connect to B, still authenticated through Steam, and present the token.
-6. Zone B validates the token with the orchestrator, loads the characters and sub, and spawns them.
+2. Zone A sends each crew member's `CharacterCampaignData` to the orchestrator in one atomic
+   transfer; the orchestrator picks a live zone-B instance with room.
+3. Zone A removes the characters and their items, and sends each client `ZONE_REDIRECT`.
+4. Clients reconnect to B through Steam as normal.
+5. Zone B claims each player by AccountId, gets their character, and the respawn manager spawns
+   them with their saved inventory.
+
+Full detail and failure cases: `PROTOCOL.md`.
 
 ## 6. Build phases
 
@@ -102,7 +112,7 @@ modification notice. Players must run this build.
 |---|---|---|
 | **0 — Cap & version check** | `MaxPlayers = 32` (done, on this branch). Decompile the installed game with ILSpy and compare to this source. | Fork builds; we know whether public source matches the Steam build. |
 | **1 — 32 in one instance** | Dedicated server build, 32-player stress test. | Stable tick rate with 32 players, AI and flooding active. |
-| **2 — Database + two-zone handoff** | Orchestrator v0, Postgres schema, transfer hooks. | One character sails out of zone A and arrives in zone B with inventory intact. |
+| **2 — Database + two-zone handoff** | Orchestrator v0 ✅, Postgres schema ✅, transfer hooks (written, unbuilt). | One character sails out of zone A and arrives in zone B with inventory intact. |
 | **3 — Multiple crews per zone** | Replace the 2-slot `MainSubs` array and 2-team model. | Three independent player subs share one zone without conflicts. |
 | **4 — Persistent world** | Every map location is a live zone; overflow instancing; shared economy. | A full map runs with players moving freely between zones. |
 
@@ -115,12 +125,18 @@ modification notice. Players must run this build.
 
 ## 8. Open decisions
 
-- **Orchestrator language:** C# (shares the save-format code with the game; current lean) or Rust (fast, robust process management).
+- ~~**Orchestrator language**~~ **Decided: Rust.** It could be built and tested in the cloud workspace
+  (C# game builds there can't fetch NuGet packages), and it treats character XML as opaque, so
+  sharing C# save code wasn't needed after all.
 - **Hosting:** Elliott's PC for development; rented Linux server(s) for real zones.
 - **Submarine ownership:** personal, crew-owned, or rented per voyage.
 - **Death rules:** full loot, partial loot, or permadeath per zone tier.
 
 ## 9. Risks
+
+- **Character duplication** (the classic MMO exploit). Handled by ownership leases: only one live
+  zone can hold a character, transfers are all-or-nothing, and transferred characters' items are
+  deleted from the source zone. Covered by orchestrator tests.
 
 - **Source/Steam version mismatch.** If the public source lags the Steam build, protocol
   differences could block clients. Phase 0's ILSpy check covers this.

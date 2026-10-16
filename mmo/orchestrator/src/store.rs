@@ -291,13 +291,14 @@ impl Store {
         Err(ApiError::NoCapacity(entries.join(", ")))
     }
 
-    /// Saves a character. Only the lease holder may save.
-    pub async fn save(&self, account_id: &str, instance_id: Uuid, xml: &str, release: bool) -> ApiResult<()> {
+    /// Saves a character. Only the lease holder may save. `xml: None` keeps the last saved
+    /// character (used when releasing a player who never spawned in this zone).
+    pub async fn save(&self, account_id: &str, instance_id: Uuid, xml: Option<&str>, release: bool) -> ApiResult<()> {
         let sql = if release {
-            "UPDATE characters SET character_xml = $3, owner_instance = NULL, updated_at = now()
+            "UPDATE characters SET character_xml = COALESCE($3, character_xml), owner_instance = NULL, updated_at = now()
              WHERE account_id = $1 AND owner_instance = $2"
         } else {
-            "UPDATE characters SET character_xml = $3, updated_at = now()
+            "UPDATE characters SET character_xml = COALESCE($3, character_xml), updated_at = now()
              WHERE account_id = $1 AND owner_instance = $2"
         };
         let updated = sqlx::query(sql)

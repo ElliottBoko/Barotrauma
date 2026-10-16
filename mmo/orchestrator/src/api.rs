@@ -148,18 +148,28 @@ async fn save_character(
 ) -> ApiResult<StatusCode> {
     check_account_id(&account_id)?;
     check_xml(&b.character_xml)?;
-    s.store.save(&account_id, b.instance_id, &b.character_xml, false).await?;
+    s.store.save(&account_id, b.instance_id, Some(&b.character_xml), false).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct ReleaseBody {
+    instance_id: Uuid,
+    /// Omitted or null: keep the last saved character.
+    #[serde(default)]
+    character_xml: Option<String>,
 }
 
 async fn release(
     State(s): State<Shared>,
     Path(account_id): Path<String>,
-    Json(b): Json<SaveBody>,
+    Json(b): Json<ReleaseBody>,
 ) -> ApiResult<StatusCode> {
     check_account_id(&account_id)?;
-    check_xml(&b.character_xml)?;
-    s.store.save(&account_id, b.instance_id, &b.character_xml, true).await?;
+    if let Some(xml) = &b.character_xml {
+        check_xml(xml)?;
+    }
+    s.store.save(&account_id, b.instance_id, b.character_xml.as_deref(), true).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
