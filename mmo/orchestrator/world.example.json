@@ -1,0 +1,13 @@
+{
+  "zones": [
+    { "key": "loc-0",   "name": "Europa Surface Station", "entry": true },
+    { "key": "conn-0-1", "name": "Cold Caverns Route" },
+    { "key": "loc-1",   "name": "Outpost Haldor" },
+    { "key": "conn-1-2", "name": "Europan Ridge Route" },
+    { "key": "loc-2",   "name": "Research Colony Ylvi" }
+  ],
+  "links": [
+    ["loc-0", "conn-0-1"], ["conn-0-1", "loc-1"],
+    ["loc-1", "conn-1-2"], ["conn-1-2", "loc-2"]
+  ]
+}
