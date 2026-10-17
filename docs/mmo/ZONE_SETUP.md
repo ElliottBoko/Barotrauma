@@ -36,35 +36,98 @@ Changes to existing game files total ~35 lines; the rest is in new files:
 | `MMO_EXIT_END` | `conn-0-1` | Zone reached by leaving through the end of the level (optional) |
 | `MMO_EXIT_START` | `loc-0` | Zone reached by leaving through the start (optional) |
 
-## Two-zone test on one PC
+## Two-zone test on one PC (Windows, PowerShell)
 
 Goal (phase 2 "done when"): a character sails out of zone A and arrives in zone B with its inventory.
+Paths below assume the repo is at `C:\Users\<you>\Barotrauma`.
 
-1. **Build** the fork's server and client (`WindowsServer.csproj`, `WindowsClient.csproj`) from
-   branch `mmo/zone-hooks`. Fix any compile errors first.
-2. **Orchestrator.** Install Rust and PostgreSQL, then from `mmo/orchestrator`:
-   ```
-   set DATABASE_URL=postgres://postgres:PASSWORD@localhost/mmo
-   set ZONE_SECRET=pick-a-long-random-string
-   set WORLD_FILE=world.example.json
-   cargo run --release
-   ```
-3. **Zone A** (`loc-0`), in its own folder copy of the server build, own terminal:
-   ```
-   set MMO_ORCHESTRATOR_URL=http://127.0.0.1:8080
-   set MMO_ZONE_SECRET=pick-a-long-random-string
-   set MMO_ZONE_KEY=loc-0
-   set MMO_PUBLIC_ADDRESS=127.0.0.1:27015
-   set MMO_EXIT_END=conn-0-1
-   DedicatedServer.exe -name "Zone A" -port 27015 -queryport 27016
-   ```
-4. **Zone B** (`conn-0-1`), second folder copy, ports 27017/27018,
-   `MMO_ZONE_KEY=conn-0-1`, `MMO_PUBLIC_ADDRESS=127.0.0.1:27017`, `MMO_EXIT_START=loc-0`.
-5. On each server, start a **multiplayer campaign** and set **Respawn mode: Mid-round** (arriving
-   players are spawned by the respawn system). Zone A should start at an outpost; zone B on a
-   route level.
-6. Join zone A with the modded client, pick up some items, undock and leave the outpost.
-   You should be moved to zone B and spawn with the same items. The orchestrator log shows
+### 1. Game assets
+
+The repo has no art, sounds or item XML; Undertow only ships them with the game. Copy them in from
+your own Steam install (the EULA allows this for people who own the game):
+
+```powershell
+Copy-Item -Recurse "C:\Program Files (x86)\Steam\steamapps\common\Barotrauma\Content" `
+  "$HOME\Barotrauma\Barotrauma\BarotraumaShared\Content"
+```
+
+Then rebuild both projects so the assets are copied next to the executables:
+
+```powershell
+cd $HOME\Barotrauma\Barotrauma\BarotraumaServer; dotnet build WindowsServer.csproj -c Release
+cd ..\BarotraumaClient; dotnet build WindowsClient.csproj -c Release
+```
+
+Output: `Barotrauma\bin\ReleaseWindows\net8.0\` (server: `DedicatedServer.exe`, client: `Barotrauma.exe`).
+
+### 2. Tools
+
+- **Rust:** run the installer from https://rustup.rs and accept the defaults, including the
+  Visual Studio C++ build tools it offers.
+- **PostgreSQL 16:** Windows installer from https://www.postgresql.org/download/windows/ .
+  Remember the password you set for the `postgres` user; keep port 5432; skip Stack Builder.
+
+Create the database (enter the password when asked):
+
+```powershell
+& "C:\Program Files\PostgreSQL\16\bin\createdb.exe" -U postgres mmo
+```
+
+### 3. Orchestrator (terminal 1)
+
+```powershell
+cd $HOME\Barotrauma\mmo\orchestrator
+$env:DATABASE_URL = "postgres://postgres:YOUR_PASSWORD@localhost/mmo"
+$env:ZONE_SECRET  = "change-me-to-a-long-random-string"
+$env:WORLD_FILE   = "world.example.json"
+cargo run --release
+```
+
+The first run compiles for a few minutes. Ready when it prints `orchestrator listening`.
+
+### 4. Two zone servers (terminals 2 and 3)
+
+Each zone needs its own copy of the server folder, so their settings and saves don't collide:
+
+```powershell
+Copy-Item -Recurse $HOME\Barotrauma\Barotrauma\bin\ReleaseWindows\net8.0 $HOME\zoneA
+Copy-Item -Recurse $HOME\Barotrauma\Barotrauma\bin\ReleaseWindows\net8.0 $HOME\zoneB
+```
+
+Zone A, the surface station (`loc-0`), in terminal 2:
+
+```powershell
+cd $HOME\zoneA
+$env:MMO_ORCHESTRATOR_URL = "http://127.0.0.1:8080"
+$env:MMO_ZONE_SECRET      = "change-me-to-a-long-random-string"
+$env:MMO_ZONE_KEY         = "loc-0"
+$env:MMO_PUBLIC_ADDRESS   = "127.0.0.1:27015"
+$env:MMO_EXIT_END         = "conn-0-1"
+.\DedicatedServer.exe -name "Zone A" -port 27015 -queryport 27016
+```
+
+Zone B, the route (`conn-0-1`), in terminal 3:
+
+```powershell
+cd $HOME\zoneB
+$env:MMO_ORCHESTRATOR_URL = "http://127.0.0.1:8080"
+$env:MMO_ZONE_SECRET      = "change-me-to-a-long-random-string"
+$env:MMO_ZONE_KEY         = "conn-0-1"
+$env:MMO_PUBLIC_ADDRESS   = "127.0.0.1:27017"
+$env:MMO_EXIT_START       = "loc-0"
+.\DedicatedServer.exe -name "Zone B" -port 27017 -queryport 27018
+```
+
+Each server should print `[MMO] Registered as instance …`, and the orchestrator logs `zone registered`.
+
+### 5. Play
+
+1. Launch the modded client (`Barotrauma.exe` from the build output; the window title says
+   "modified"). Steam must be running.
+2. Join zone A (Join server → direct join `127.0.0.1:27015`). Start a **multiplayer campaign**
+   with **Respawn mode: Mid-round**. Do the same on zone B (join it once, set it up, leave).
+3. In zone A, pick up some items, undock and sail out of the outpost.
+4. Expected: you're moved to zone B and spawn holding the same items. The orchestrator log shows
    `claim … new`, `transfer`, then `claim … arrive`.
 
 A single PC can't easily run two clients on one Steam account, so this test uses one player.
